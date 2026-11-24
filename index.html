@@ -5,7 +5,7 @@
 <meta name="theme-color" content="#111111">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Achados e Perdidos · IEMA Pleno Maria Mônica Vale</title>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Figtree:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Plus+Jakarta+Sans:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box}
 :root{--navy:#0F294A;--blue:#1D63B8;--bg:#F4F6F9;--card:#fff;--ink:#14213a;--mut:#5b6980;--line:#dfe4ec;--lost:#E11D48;--ok:#10B981;--sec:#b45309;--inp:#fff;--tint:#e4edf8;color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -64,9 +64,26 @@ nav svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stro
 nav button[aria-current=page]{color:var(--red)}.tabs button[aria-pressed=true]{border-color:var(--red)}
 .hero{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-left:5px solid var(--red);border-radius:14px;padding:12px 14px;margin-bottom:12px}.hero .act{padding:0;margin:0}
 .foot{text-align:center;color:var(--mut);font-size:.85rem;padding:22px 16px 6px}.foot b{color:var(--ink)}
+.chat{max-height:48vh;overflow:auto;display:grid;gap:8px;margin-bottom:10px;align-content:start}.bub{background:var(--tint);border-radius:16px 16px 16px 4px;padding:8px 12px;max-width:85%;justify-self:start;font-size:.95rem;overflow-wrap:anywhere}.bub small{display:block;color:var(--mut);font-size:.7rem}.bub.me{background:var(--blue);color:#fff;justify-self:end;border-radius:16px 16px 4px 16px}.bub.me small{color:#dbe7ff}.badge{background:var(--red);color:#fff;border-radius:999px;padding:1px 8px;font-size:.72rem}
+html{background:var(--card)}body{font-family:'Plus Jakarta Sans',Figtree,system-ui,sans-serif}
+.btn,.chip,nav button,.tabs button,.link{font-family:'Plus Jakarta Sans',Figtree,system-ui,sans-serif}
+.top{background:var(--card);color:var(--ink);box-shadow:inset 0 -1px 0 var(--line);border-top:5px solid var(--red)}.top small{opacity:1;color:var(--mut)}
+.top .btn.g{color:var(--ink)!important;border-color:var(--line)!important}
+.logo{border:0;box-shadow:0 0 0 2px var(--line)}
+.card,.panel,.hero,.stats div{border-radius:20px;box-shadow:0 2px 12px #0f172a12}.btn,.chip{border-radius:999px}input,select,textarea{border-radius:14px}
+.ph{height:160px}nav{border-radius:22px 22px 0 0}nav button{font-size:.66rem;padding:6px 2px}
 </style>
 </head>
 <body>
+  <script src="https://vlibras.gov.br/app/vlibras-plugin.js"></script>
+<script>
+  new window.VLibras.Widget({
+      rootPath: 'https://vlibras.gov.br/app',
+      personalization: 'https://vlibras.gov.br/config/default_logo.json',
+      avatar: 'random',
+      position: 'R',
+  });
+</script>
 <div id="app"></div>
 <datalist id="dom"></datalist>
 <div class="ov" id="ov" hidden></div>
@@ -96,6 +113,49 @@ const today=()=>new Date().toISOString().slice(0,10),ago=d=>new Date(Date.now()-
 const rel=d=>{const n=Math.round((new Date(today())-new Date(d))/864e5);return n<=0?'Hoje':n===1?'Ontem':`Há ${n} dias`};
 const status=i=>i.returned?'DEVOLVIDO':i.type==='lost'?'PERDIDO':i.custody==='secretaria'?'NA SECRETARIA':'ENCONTRADO';
 
+/* ========= RATE LIMIT (ANTI-SPAM) ========= */
+const RL_KEY='iema_rl_v1';
+const RL_RULES={
+  post:{max:3,win:15*60e3,cool:30e3,label:'publicar ocorrências'},
+  claim:{max:5,win:10*60e3,cool:15e3,label:'enviar avisos'},
+  chat:{max:8,win:2*60e3,cool:3e3,label:'enviar mensagens no suporte'},
+  login:{max:5,win:5*60e3,cool:2e3,label:'tentar entrar'},
+  reg:{max:2,win:30*60e3,cool:10e3,label:'criar contas'}
+};
+const fmtWait=ms=>{const s=Math.ceil(ms/1e3);return s<60?`${s}s`:`${Math.ceil(s/60)} min`};
+function checkRate(act,who){
+  const r=RL_RULES[act];if(!r)return '';
+  const now=Date.now(),id=`${act}:${who||'anon'}`,all=db.get(RL_KEY,{});
+  const list=(all[id]||[]).filter(t=>now-t<r.win);
+  if(list.length){
+    const last=list[list.length-1];
+    if(now-last<r.cool)return `Aguarde ${fmtWait(r.cool-(now-last))} antes de ${r.label} novamente.`;
+    if(list.length>=r.max)return `Limite atingido para ${r.label} (${r.max}x). Tente novamente em ${fmtWait(r.win-(now-list[0]))}.`;
+  }
+  return '';
+}
+function hitRate(act,who){
+  const r=RL_RULES[act];if(!r)return;
+  const now=Date.now(),id=`${act}:${who||'anon'}`,all=db.get(RL_KEY,{});
+  all[id]=[...(all[id]||[]).filter(t=>now-t<r.win),now];
+  db.set(RL_KEY,all);
+}
+
+const dark=()=>{const t=document.documentElement.dataset.theme;return t?t==='dark':matchMedia('(prefers-color-scheme:dark)').matches};
+const CH='iema_chat_v3';
+const chats=()=>db.get(CH,[]),saveChats=a=>db.set(CH,a);
+const chatUnseen=()=>chats().filter(m=>!m.seen&&(isAdmin(S.user)?m.from==='u':(m.from==='adm'&&m.uid===S.user.id))).length;
+function chatSeen(uid){const adm=isAdmin(S.user);saveChats(chats().map(m=>m.uid===uid&&m.from===(adm?'u':'adm')&&!m.seen?{...m,seen:true}:m))}
+function sendChat(text){const t=(text||'').trim();if(!t)return;const adm=isAdmin(S.user),uid=adm?S.cu:S.user.id;if(!uid)return;
+ if(!adm){const rl=checkRate('chat',S.user.id);if(rl)return toast(rl,'e');hitRate('chat',S.user.id)}
+ saveChats([...chats(),{id:'m'+Date.now(),uid,from:adm?'adm':'u',name:adm?'Coordenação':S.user.name,text:t,at:Date.now(),seen:false}]);render()}
+function chatView(){const adm=isAdmin(S.user),all=chats();
+ if(adm&&!S.cu){const th=[...new Set(all.map(m=>m.uid))].map(u=>{const l=all.filter(m=>m.uid===u),last=l[l.length-1];return{u,last,n:l.filter(m=>m.from==='u'&&!m.seen).length,name:(l.find(m=>m.from==='u')||{}).name||'Usuário'}}).sort((a,b)=>b.last.at-a.last.at);
+  return `<h2>Suporte: conversas</h2><div class="panel">${th.map(t=>`<div class="row"><div><b>${esc(t.name)}</b>${t.n?` <span class="badge">${t.n} nova(s)</span>`:''}<p class="m">${esc(t.last.text.slice(0,60))}</p></div><button class="btn sm" data-act="copen" data-id="${t.u}">Abrir</button></div>`).join('')||'<p class="m">Nenhuma mensagem de suporte ainda.</p>'}</div>`}
+ const uid=adm?S.cu:S.user.id,l=all.filter(m=>m.uid===uid).sort((a,b)=>a.at-b.at),w=users().find(isAdmin);
+ return `<h2>${adm?'Conversa com '+esc((l.find(m=>m.from==='u')||{}).name||'usuário'):'Suporte com a Coordenação'}</h2>${adm?'<button class="link" data-act="cback">← Todas as conversas</button>':''}<div class="panel chat" id="msgs">${l.length?l.map(m=>`<div class="bub ${(m.from==='adm')===adm?'me':''}"><small>${esc(m.name)} · ${new Date(m.at).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}</small>${esc(m.text)}</div>`).join(''):'<p class="m">Olá! Escreva sua dúvida ou problema. A Coordenação responde assim que possível.</p>'}</div>`+
+ (adm?'':`<div class="chips">${['Como retiro meu item?','Quero denunciar um uso indevido','Preciso corrigir uma publicação'].map(t=>`<button class="chip" data-act="qmsg" data-id="${esc(t)}">${esc(t)}</button>`).join('')}</div>`)+
+ `<div class="row" style="border:0;padding:0"><input id="c-text" placeholder="Digite sua mensagem" maxlength="300" style="flex:1"><button class="btn" data-act="csend">Enviar</button></div>`+(!adm&&w?`<p class="m" style="margin-top:10px">Prefere o WhatsApp? <a href="${esc(waLink(w.phone,'Olá, Coordenação! Preciso de ajuda no Achados e Perdidos do IEMA.'))}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:700">Chamar a Coordenação</a></p>`:'')}
 function seed(){
   if(db.get(K.u))return;
   saveUsers([
@@ -108,7 +168,7 @@ function seed(){
   saveItems([
     mk(1,{type:'found',title:'Fone Bluetooth preto',cat:'Eletrônicos',loc:LOCS[1],locx:'Lab 2',turno:'Manhã',date:ago(1),custody:'secretaria',q:'Qual a marca do fone?',desc:'Estava em cima de uma bancada.'},U[2]),
     mk(2,{type:'lost',title:'Estojo azul com chaveiro de estrela',cat:CATS[0],loc:LOCS[5],turno:'Tarde',date:ago(2),custody:''},U[1]),
-    mk(3,{type:'found',title:'Garrafa térmica verde',cat:CATS[2],loc:LOCS[3],turno:'Integral',date:ago(2),custody:'comigo',q:'Que adesivo está na tampa?'},U[2]),
+    mk(3,{type:'found',title:'Garrafa térmica verde',cat:CATS[2],loc:LOCS[3],turno:'Tarde',date:ago(2),custody:'comigo',q:'Que adesivo está na tampa?'},U[2]),
     mk(4,{type:'lost',title:'Cartão de transporte estudantil',cat:CATS[4],loc:LOCS[2],turno:'Manhã',date:ago(3),custody:''},U[1]),
     mk(5,{type:'found',title:'Casaco do IEMA tamanho M',cat:CATS[3],loc:LOCS[4],turno:'Tarde',date:ago(4),custody:'secretaria'},U[0]),
     mk(6,{type:'found',title:'Chaveiro com 3 chaves',cat:CATS[5],loc:LOCS[8],turno:'Manhã',date:ago(6),custody:'secretaria',returned:true},U[2])]);
@@ -125,10 +185,10 @@ const mask=v=>{const d=v.replace(/\D/g,'').slice(0,11);return !d?'':d.length<3?'
 const val=id=>($('#'+id)?.value||'').trim();
 function showErr(m){const e=$('#err');if(e)e.textContent=m;toast(m,'e')}
 function startSession(u,keep){S.user=u;S.view='feed';db.set(K.s,u.id,!keep);render()}
-const IC={feed:'M4 6h16M4 12h16M4 18h10',post:'M12 5v14M5 12h14',me:'M12 12a4 4 0 100-8 4 4 0 000 8zM4 21c0-4 4-6 8-6s8 2 8 6',admin:'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z'};
+const IC={feed:'M4 6h16M4 12h16M4 18h10',post:'M12 5v14M5 12h14',me:'M12 12a4 4 0 100-8 4 4 0 000 8zM4 21c0-4 4-6 8-6s8 2 8 6',admin:'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',chat:'M21 12a8 8 0 01-11.6 7.1L4 20l1-4.6A8 8 0 1121 12z'};
 
 /* ========= VIEWS ========= */
-const header=()=>`<header class="top"><div class="brand"><img class="logo" src="${LOGO}" alt="Logo do IEMA"><div><h1>Achados e Perdidos</h1><small>IEMA Pleno Maria Mônica Vale · São Luís</small></div></div><button class="btn g sm" data-act="theme" style="color:#fff;border-color:#ffffff55" aria-label="Alternar tema claro e escuro">Tema</button></header>`;
+const header=()=>`<header class="top"><div class="brand"><img class="logo" src="${LOGO}" alt="Logo do IEMA"><div><h1>Achados e Perdidos</h1><small>IEMA Pleno Maria Mônica Vale · São Luís</small></div></div><button class="btn g sm" data-act="theme" style="color:#fff;border-color:#ffffff55" aria-label="Alternar tema claro e escuro">${dark()?'Modo diurno':'Modo noturno'}</button></header>`;
 function authView(){const l=S.auth==='login';
  return header()+`<main><h2>Perdeu ou achou algo no IEMA?</h2><p class="m" style="margin-bottom:12px">Entre ou crie sua conta para publicar e avisar o dono.</p><div class="panel"><div class="tabs"><button data-act="auth" data-id="login" aria-pressed="${l}">Entrar</button><button data-act="auth" data-id="reg" aria-pressed="${!l}">Criar conta</button></div>`+(l?
  fld('E-mail','<input id="l-login" type="email" autocomplete="username" inputmode="email" placeholder="seunome@gmail.com" list="dom">')+fld('Senha','<input id="l-pw" type="password" autocomplete="current-password">')+
@@ -138,15 +198,15 @@ function authView(){const l=S.auth==='login';
  `<div id="r-tw">${fld('Sala / turma',sel('r-turma',TURMAS,'Selecione'))}</div>`+
  fld('WhatsApp','<input id="r-phone" inputmode="tel" placeholder="(98) 9XXXX-XXXX">')+fld('Senha','<input id="r-pw" type="password" autocomplete="new-password">')+fld('Confirmar senha','<input id="r-pw2" type="password" autocomplete="new-password">')+
  `<div class="err" id="err"></div><button class="btn full" data-act="reg">Criar conta</button>`)+`</div></main><footer class="foot">Desenvolvido por <b>Luís Davi</b></footer>`}
-const nav=()=>`<nav>${[['feed','Feed'],['post','Publicar'],['me','Meu perfil'],...(isAdmin(S.user)?[['admin','Painel']]:[])].map(([k,t])=>`<button data-act="go" data-id="${k}" ${S.view===k?'aria-current="page"':''}><svg viewBox="0 0 24 24"><path d="${IC[k]}"/></svg>${t}${k==='me'&&unseen()?` (${unseen()})`:''}</button>`).join('')}</nav>`;
+const nav=()=>`<nav>${[['feed','Feed'],['post','Publicar'],['chat','Suporte'],['me','Perfil'],...(isAdmin(S.user)?[['admin','Painel']]:[])].map(([k,t])=>`<button data-act="go" data-id="${k}" ${S.view===k?'aria-current="page"':''}><svg viewBox="0 0 24 24"><path d="${IC[k]}"/></svg>${t}${k==='me'&&unseen()?` (${unseen()})`:''}${k==='chat'&&chatUnseen()?` (${chatUnseen()})`:''}</button>`).join('')}</nav>`;
 function card(i){const s=status(i),mine=S.user.id===i.owner,adm=isAdmin(S.user),f=i.type==='found';
  return `<article class="card"><div class="ph">${i.photo.startsWith('data:image/')?`<img src="${i.photo}" alt="Foto de ${esc(i.title)}">`:`<b>${esc(i.cat[0])}</b>`}<span class="st ${SC[s]}">${s}</span></div><div class="cb"><h3>${esc(i.title)}</h3><p class="m">${esc(i.loc)}${i.locx?' · '+esc(i.locx):''}</p><p class="m">${rel(i.date)} (${fmt(i.date)}) · ${i.turno} · ${esc(i.cat)}</p><p class="m">Publicado por ${esc(i.ownerName.split(' ')[0])}</p>${s==='NA SECRETARIA'?'<p class="m"><b>Retire na Coordenação / Secretaria.</b></p>':''}${!i.returned&&(new Date(today())-new Date(i.date))>2592e6?'<p class="m">Publicado há mais de 30 dias. Procure a Secretaria.</p>':''}${i.desc?`<p>${esc(i.desc)}</p>`:''}<div class="act">${i.returned?'<span class="m">Devolvido ao dono.</span>':(!mine?`<button class="btn sm" data-act="claim" data-id="${i.id}">${f?'Este item é meu':'Achei! Avisar o dono'}</button>`:'')+((mine||adm)?`<button class="btn sm go" data-act="ret" data-id="${i.id}">Confirmar devolução</button>`:'')}${mine&&!i.returned?`<button class="btn sm g" data-act="edit" data-id="${i.id}">Editar</button>`:''}${mine?`<button class="btn sm g" data-act="del" data-id="${i.id}">Excluir</button>`:''}</div></div></article>`}
 const list=()=>items().filter(i=>!i.archived).filter(i=>{const f=S.f,t=[i.title,i.desc,i.cat,i.loc,i.locx].join(' ').toLowerCase();return(!f.q||t.includes(f.q.toLowerCase()))&&(!f.cat||i.cat===f.cat)&&(!f.loc||i.loc===f.loc)&&(!f.st||status(i)===f.st)&&(!f.tur||i.turno===f.tur)}).sort((a,b)=>b.created-a.created);
 function drawList(){const l=list();$('#list').innerHTML=l.length?l.map(card).join(''):'<div class="panel"><p>Nenhum item encontrado com esses filtros.</p><div class="act"><button class="btn sm g" data-act="clear">Limpar filtros</button><button class="btn sm" data-act="go" data-id="post">Publicar ocorrência</button></div></div>'}
-const feedView=()=>`<div class="hero"><div><b>Olá, ${esc(S.user.name.split(' ')[0])}!</b><p class="m">Perdeu ou achou algo no IEMA?</p></div><div class="act"><button class="btn sm rd" data-act="newpost" data-id="lost">Perdi um item</button><button class="btn sm" data-act="newpost" data-id="found">Achei um item</button></div></div><div class="chips">${[['','Todos'],['PERDIDO','Perdidos'],['ENCONTRADO','Achados'],['NA SECRETARIA','Na secretaria'],['DEVOLVIDO','Devolvidos']].map(([v,t])=>`<button class="chip" data-act="chip" data-id="${v}" aria-pressed="${S.f.st===v}">${t}</button>`).join('')}</div><input id="q" type="search" placeholder="Buscar item, local ou categoria" value="${esc(S.f.q)}"><div class="flt">${['cat|Categoria|'+CATS,'loc|Local|'+LOCS,'st|Status|PERDIDO,ENCONTRADO,NA SECRETARIA,DEVOLVIDO','tur|Turno|Manhã,Tarde,Integral'].map(x=>{const[k,n,o]=x.split('|'),arr=k==='st'||k==='tur'?o.split(','):k==='cat'?CATS:LOCS;return `<select id="f-${k}" aria-label="${n}"><option value="">${n}: todos</option>${arr.map(v=>`<option ${S.f[k]===v?'selected':''}>${esc(v)}</option>`).join('')}</select>`}).join('')}</div><div class="grid" id="list"></div>`;
+const feedView=()=>`<div class="hero"><div><b>Olá, ${esc(S.user.name.split(' ')[0])}!</b><p class="m">Perdeu ou achou algo no IEMA?</p></div><div class="act"><button class="btn sm rd" data-act="newpost" data-id="lost">Perdi um item</button><button class="btn sm" data-act="newpost" data-id="found">Achei um item</button></div></div><div class="chips">${[['','Todos'],['PERDIDO','Perdidos'],['ENCONTRADO','Achados'],['NA SECRETARIA','Na secretaria'],['DEVOLVIDO','Devolvidos']].map(([v,t])=>`<button class="chip" data-act="chip" data-id="${v}" aria-pressed="${S.f.st===v}">${t}</button>`).join('')}</div><input id="q" type="search" placeholder="Buscar item, local ou categoria" value="${esc(S.f.q)}"><div class="flt">${['cat|Categoria|'+CATS,'loc|Local|'+LOCS,'st|Status|PERDIDO,ENCONTRADO,NA SECRETARIA,DEVOLVIDO','tur|Turno|Manhã,Tarde'].map(x=>{const[k,n,o]=x.split('|'),arr=k==='st'||k==='tur'?o.split(','):k==='cat'?CATS:LOCS;return `<select id="f-${k}" aria-label="${n}"><option value="">${n}: todos</option>${arr.map(v=>`<option ${S.f[k]===v?'selected':''}>${esc(v)}</option>`).join('')}</select>`}).join('')}</div><div class="grid" id="list"></div>`;
 const postView=()=>`<h2>Publicar ocorrência</h2><div class="panel" id="pform" data-type="lost"><div class="seg"><button class="btn g l" data-act="ptype" data-id="lost" aria-pressed="true">Perdi um item</button><button class="btn g r" data-act="ptype" data-id="found" aria-pressed="false">Encontrei um item</button></div>
 ${fld('Título','<input id="p-title" maxlength="60" placeholder="Ex.: Caderno de capa vermelha">')}${fld('Categoria',sel('p-cat',CATS,'Selecione'))}${fld('Local na escola',sel('p-loc',LOCS,'Selecione'))}<div id="p-match"></div><div id="p-saw" style="display:none">${fld('Sala',sel('p-sala',TURMAS,'Selecione a sala'))}</div>${fld('Complemento do local (opcional)','<input id="p-locx" placeholder="Ex.: perto da porta, mesa do fundo">')}
-<div class="two">${fld('Data',`<input id="p-date" type="date" value="${today()}" max="${today()}">`)}${fld('Turno',sel('p-turno',['Manhã','Tarde','Integral']))}</div>
+<div class="two">${fld('Data',`<input id="p-date" type="date" value="${today()}" max="${today()}">`)}${fld('Turno',sel('p-turno',['Manhã','Tarde']))}</div>
 ${fld('Descrição (opcional)','<textarea id="p-desc" rows="2" maxlength="200"></textarea>')}
 <div class="warn">Privacidade: não mostre números de documentos, senhas ou dados pessoais na foto.</div>${fld('Foto (opcional)','<input id="p-photo" type="file" accept="image/*">')}<div id="p-prev"></div>
 <div class="only-found">${fld('Onde o item está?',sel('p-cust',['Está comigo','Foi entregue na Coordenação / Secretaria']))}${fld('Pergunta de validação (opcional)','<input id="p-q" maxlength="80" placeholder="Ex.: Qual a cor da capa?">')}</div>
@@ -169,27 +229,36 @@ function adminView(){const a=items().filter(i=>!i.archived),g=(t,f,btn)=>{const 
  g('Guardados na secretaria',i=>status(i)==='NA SECRETARIA',i=>`<button class="btn sm go" data-act="ret" data-id="${i.id}">Entregar ao dono</button>`)+
  g('Devoluções concluídas',i=>i.returned,i=>`<button class="btn sm g" data-act="arch" data-id="${i.id}">Arquivar</button>`)+turmasPanel()}
 function render(){const a=$('#app');if(!S.user){a.innerHTML=authView();return}
- a.innerHTML=header()+'<main>'+({feed:feedView,post:postView,me:meView,admin:adminView}[S.view]||feedView)()+'</main><footer class="foot">Desenvolvido por <b>Luís Davi</b></footer>'+nav();if(S.view==='feed')drawList()}
+ a.innerHTML=header()+'<main>'+({feed:feedView,post:postView,me:meView,admin:adminView,chat:chatView}[S.view]||feedView)()+'</main><footer class="foot">Desenvolvido por <b>Luís Davi</b></footer>'+nav();if(S.view==='feed')drawList();if(S.view==='chat'){const m=$('#msgs');if(m)m.scrollTop=m.scrollHeight}}
 
 /* ========= AÇÕES ========= */
 const find=id=>items().find(i=>i.id===id),upd=(id,fn)=>{saveItems(items().map(i=>i.id===id?(fn(i),i):i))};
-function doLogin(){const l=val('l-login').toLowerCase(),p=$('#l-pw').value,u=users().find(x=>x.login.toLowerCase()===l&&x.pw===h(p));
- if(!l||!p)return showErr('Informe e-mail e senha.');if(!u)return showErr('E-mail ou senha incorretos.');startSession(u,$('#l-keep').checked);toast('Olá, '+u.name.split(' ')[0]+'!')}
-function doReg(){const d={name:val('r-name'),login:val('r-login'),role:val('r-role'),turma:val('r-turma'),phone:val('r-phone'),pw:$('#r-pw').value,pw2:$('#r-pw2').value};
+function doLogin(){const l=val('l-login').toLowerCase(),p=$('#l-pw').value;
+ const rl=checkRate('login',l||'anon');if(rl)return showErr(rl);
+ const u=users().find(x=>x.login.toLowerCase()===l&&x.pw===h(p));
+ if(!l||!p)return showErr('Informe e-mail e senha.');if(!u){hitRate('login',l);return showErr('E-mail ou senha incorretos.')}startSession(u,$('#l-keep').checked);toast('Olá, '+u.name.split(' ')[0]+'!')}
+function doReg(){const rl=checkRate('reg','device');if(rl)return showErr(rl);
+ const d={name:val('r-name'),login:val('r-login'),role:val('r-role'),turma:val('r-turma'),phone:val('r-phone'),pw:$('#r-pw').value,pw2:$('#r-pw2').value};
  const err=d.name.split(/\s+/).length<2?'Informe nome e sobrenome.':!/^\S+@\S+\.\S+$/.test(d.login)?'Informe um e-mail válido.':!d.role?'Escolha seu vínculo com a escola.':d.role==='Estudante'&&!d.turma?'Escolha sua turma.':!/^\(\d{2}\) 9\d{4}-\d{4}$/.test(d.phone)?'WhatsApp deve estar no formato (98) 9XXXX-XXXX.':d.pw.length<6?'A senha precisa ter 6 caracteres ou mais.':d.pw!==d.pw2?'As senhas não conferem.':users().some(u=>u.login.toLowerCase()===d.login.toLowerCase())?'Este e-mail já tem cadastro.':'';
  if(err)return showErr(err);
+ hitRate('reg','device');
  const u={id:'u'+Date.now(),name:d.name,login:d.login,role:d.role,turma:d.role==='Estudante'?d.turma:'',phone:d.phone,pw:h(d.pw)};saveUsers([...users(),u]);startSession(u,true);toast('Conta criada. Bem-vindo(a)!')}
 function forgot(){openM(`<h2>Redefinir senha</h2><p class="m">Protótipo: em produção, o link de redefinição chega por e-mail.</p>${fld('E-mail','<input id="fg-l" type="email" list="dom">')}${fld('Nova senha','<input id="fg-p" type="password">')}<div class="err" id="err"></div><div class="two"><button class="btn g" data-act="close">Cancelar</button><button class="btn" data-act="fgo">Salvar senha</button></div>`)}
 function fgo(){const l=val('fg-l').toLowerCase(),p=$('#fg-p').value,u=users().find(x=>x.login.toLowerCase()===l);if(!u)return showErr('Cadastro não encontrado.');if(p.length<6)return showErr('A nova senha precisa ter 6 caracteres ou mais.');saveUsers(users().map(x=>x.id===u.id?{...x,pw:h(p)}:x));closeM();toast('Senha atualizada. Entre com a nova senha.')}
 function readPhoto(f){return new Promise((ok,no)=>{if(!f.type.startsWith('image/'))return no();const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const k=Math.min(1,640/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);ok(c.toDataURL('image/jpeg',.72))};im.onerror=no;im.src=r.result};r.onerror=no;r.readAsDataURL(f)})}
-function publish(){const type=$('#pform').dataset.type,f=type==='found',d={title:val('p-title'),cat:val('p-cat'),loc:val('p-loc'),date:val('p-date')};
+function publish(){const rl=checkRate('post',S.user.id);if(rl)return showErr(rl);
+ const type=$('#pform').dataset.type,f=type==='found',d={title:val('p-title'),cat:val('p-cat'),loc:val('p-loc'),date:val('p-date')};
  const err=d.title.length<3?'Dê um título ao item.':!d.cat?'Escolha uma categoria.':!d.loc?'Escolha o local na escola.':!d.date||d.date>today()?'Informe uma data válida (não pode ser futura).':!/^\(\d{2}\) 9\d{4}-\d{4}$/.test(val('p-phone'))?'Informe um WhatsApp válido para contato.':'';if(err)return showErr(err);
+ hitRate('post',S.user.id);
  const u=S.user;saveItems([{id:'i'+Date.now(),created:Date.now(),type,title:d.title,cat:d.cat,loc:d.loc,locx:[d.loc==='Salas de aula'?val('p-sala'):'',val('p-locx')].filter(Boolean).join(' · '),turno:val('p-turno'),date:d.date,desc:val('p-desc'),photo:S.photo,custody:f?(val('p-cust').startsWith('Foi')?'secretaria':'comigo'):'',q:f?val('p-q'):'',owner:u.id,ownerName:u.name,ownerPhone:val('p-phone'),returned:false,archived:false,claims:[]},...items()]);
  S.photo='';S.view='feed';render();toast('Ocorrência publicada.')}
 function claimM(id){const i=find(id),f=i.type==='found';
  openM(`<h2>${f?'Este item é meu':'Eu encontrei'}</h2><p class="m">${esc(i.title)}</p>${f&&i.q?fld('Pergunta de segurança: '+esc(i.q),'<input id="c-ans" autocomplete="off">'):''}${fld('Sua turma ou setor',`<input id="c-turma" value="${esc(S.user.turma||S.user.role)}">`)}${fld('Seu WhatsApp (o dono vai te chamar por aqui)',`<input id="c-phone" inputmode="tel" value="${esc(S.user.phone)}">`)}${fld(f?'Mensagem para o dono (opcional)':'Mensagem para o dono: onde você achou o item?',`<textarea id="c-msg" rows="2" maxlength="160"></textarea>`)}<div class="err" id="err"></div><div class="two"><button class="btn g" data-act="close">Cancelar</button><button class="btn" data-act="claimgo" data-id="${id}">Enviar</button></div>`)}
-function claimGo(id){const i=find(id),f=i.type==='found',ans=val('c-ans'),t=val('c-turma');
+function claimGo(id){const rl=checkRate('claim',S.user.id);if(rl)return showErr(rl);
+ const i=find(id),f=i.type==='found',ans=val('c-ans'),t=val('c-turma');
+ if(i.claims.some(c=>c.by===S.user.id&&c.st==='wait'))return showErr('Você já enviou um aviso para este item. Aguarde a análise do dono.');
  if(f&&i.q&&!ans)return showErr('Responda à pergunta de segurança.');const ph=val('c-phone'),note=val('c-msg');if(!/^\(\d{2}\) 9\d{4}-\d{4}$/.test(ph))return showErr('Informe seu WhatsApp no formato (98) 9XXXX-XXXX.');if(!t)return showErr('Informe sua turma ou setor.');
+ hitRate('claim',S.user.id);
  upd(id,x=>x.claims.push({by:S.user.id,name:S.user.name,turma:t,ans,phone:ph,note,at:Date.now(),seen:false,st:'wait'}));
  const sec=i.custody==='secretaria',msg=`Olá! Vi sua publicação no Achados e Perdidos do IEMA Maria Mônica Vale sobre o item ${i.title}. ${f?'Acredito que ele é meu.':'Eu encontrei esse item.'} Sou ${S.user.name} (${t}).${ans?' Resposta de segurança: '+ans+'.':''}${note?' '+note:''} Meu WhatsApp: ${ph}.${sec&&f?' Posso retirar na Secretaria?':''}`,
  wa=`https://wa.me/55${i.ownerPhone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`;
@@ -197,12 +266,12 @@ function claimGo(id){const i=find(id),f=i.type==='found',ans=val('c-ans'),t=val(
 function confirmM(m,fn){S.pending=fn;openM(`<h2>Confirmar</h2><p>${m}</p><div class="two"><button class="btn g" data-act="close">Voltar</button><button class="btn" data-act="yes">Confirmar</button></div>`)}
 const A={
  auth:id=>{S.auth=id;render()},login:doLogin,reg:doReg,forgot,fgo,close:closeM,
- go:id=>{if(id==='me')markSeen();S.view=id;render();scrollTo(0,0)},
+ go:id=>{if(id==='me')markSeen();if(id==='chat'){S.cu=null;if(!isAdmin(S.user))chatSeen(S.user.id)}S.view=id;render();scrollTo(0,0)},
  chip:v=>{S.f.st=v;render()},
+ copen:id=>{S.cu=id;chatSeen(id);render()},cback:()=>{S.cu=null;render()},csend:()=>sendChat(val('c-text')),qmsg:t=>sendChat(t),
  clear:()=>{S.f={q:'',cat:'',loc:'',st:'',tur:''};render()},
  newpost:id=>{S.view='post';render();scrollTo(0,0);A.ptype(id)},
- theme:()=>{const r=document.documentElement,dark=r.dataset.theme?r.dataset.theme==='dark':matchMedia('(prefers-color-scheme:dark)').matches,n=dark?'light':'dark';r.dataset.theme=n;db.set('iema_theme',n)},
- 
+ theme:()=>{const n=dark()?'light':'dark';document.documentElement.dataset.theme=n;db.set('iema_theme',n);render()},
  ptype:id=>{$('#pform').dataset.type=id;document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.id===id));match()},
  publish,claim:claimM,claimgo:claimGo,
  ret:id=>confirmM('Marcar este item como devolvido? Ele passa a contar em “itens recuperados”.',()=>{upd(id,i=>{i.returned=true;i.returnedAt=Date.now()});db.set(K.c,db.get(K.c,0)+1);closeM();render();toast('Devolução confirmada. +1 item recuperado!')}),
@@ -216,7 +285,7 @@ const A={
  tadd:()=>{const v=val('t-new');if(v.length<2)return toast('Digite o nome da sala ou turma.','e');if(TURMAS.includes(v))return toast('Essa turma já existe.','e');TURMAS=[...TURMAS,v];db.set('iema_turmas',TURMAS);render();toast('Turma adicionada.')},
  tdel:id=>{TURMAS=TURMAS.filter((_,k)=>k!=id);db.set('iema_turmas',TURMAS);render();toast('Turma removida.')},
  csv:()=>{const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"',r=[['Status','Título','Categoria','Local','Data','Turno','Guarda','Publicado por','Contato','Pedidos']].concat(items().map(i=>[status(i),i.title,i.cat,i.loc+(i.locx?' - '+i.locx:''),fmt(i.date),i.turno,i.custody||'',i.ownerName,i.ownerPhone,i.claims.length]));openM(`<h2>Resumo (CSV)</h2><p class="m">Toque na caixa, selecione tudo e copie. Cole em uma planilha.</p><textarea rows="8" readonly onfocus="this.select()">${esc(r.map(x=>x.map(q).join(';')).join('\n'))}</textarea><button class="btn g" data-act="close">Fechar</button>`)},
- reset:()=>confirmM('Apagar todos os dados e voltar à demonstração inicial? Contas e publicações criadas serão perdidas.',()=>{[K.u,K.i,K.c,K.s,'iema_turmas'].forEach(k=>db.del(k));TURMAS=TDEF;S.user=null;S.view='feed';S.auth='login';closeM();seed();render();toast('Dados de demonstração restaurados.')}),
+ reset:()=>confirmM('Apagar todos os dados e voltar à demonstração inicial? Contas e publicações criadas serão perdidas.',()=>{[K.u,K.i,K.c,K.s,RL_KEY,'iema_turmas'].forEach(k=>db.del(k));TURMAS=TDEF;S.user=null;S.view='feed';S.auth='login';closeM();seed();render();toast('Dados de demonstração restaurados.')}),
  phone:()=>openM(`<h2>Meu WhatsApp</h2><p class="m">É este número que as pessoas usam para falar com você.</p>${fld('WhatsApp',`<input id="m-phone" inputmode="tel" value="${esc(S.user.phone)}">`)}<div class="err" id="err"></div><div class="two"><button class="btn g" data-act="close">Cancelar</button><button class="btn" data-act="phonego">Salvar número</button></div>`),
  phonego:()=>{const p=val('m-phone');if(!/^\(\d{2}\) 9\d{4}-\d{4}$/.test(p))return showErr('Use o formato (98) 9XXXX-XXXX.');S.user.phone=p;saveUsers(users().map(x=>x.id===S.user.id?{...x,phone:p}:x));saveItems(items().map(i=>i.owner===S.user.id&&!i.returned?{...i,ownerPhone:p}:i));closeM();render();toast('Número atualizado.')},
  logout:()=>{db.del(K.s);S.user=null;S.view='feed';render();toast('Você saiu da conta.')}
@@ -233,6 +302,7 @@ document.addEventListener('change',async e=>{const t=e.target;
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeM();if(e.key==='Enter'&&e.target.tagName==='INPUT'&&e.target.type!=='search'){const p=e.target.closest('.panel'),b=p&&p.querySelector('.btn.full');if(b&&!S.user)b.click()}});
 
 const th=db.get('iema_theme');if(th)document.documentElement.dataset.theme=th;
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='c-text')A.csend()});
 const ic=document.createElement('link');ic.rel='icon';ic.href=LOGO;document.head.append(ic);
 seed();S.user=users().find(u=>u.id===db.get(K.s))||null;render();
 </script>
